@@ -283,14 +283,25 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     all_thought_outputs.append(self.hidden_states_to_token(current_hidden, lm_head=True))
 
             inputs_embeds = self.get_input_embeddings()(language_ids)
-            masked_question_and_thoughts = torch.zeros(
-                (language_ids.shape[0], thought_ids.shape[1]),
-                dtype=language_mask.dtype,
-                device=language_mask.device,
-            )
-            attention_mask = torch.cat((thought_mask, masked_question_and_thoughts, language_mask), dim=1)
+            # FIXME: when reasoning in latent space, we always have +1 to mask
+            # because of the last hidden states, but no corresponding input_ids being available.
+            # SO we need to insert a zero at the correct index to mask it
+            # (currently, this is not correctly inserted since it's just at the end)
+            attention_mask = torch.cat((
+                attention_mask,
+                torch.zeros(
+                    (language_mask.shape[0], 1),
+                    dtype=language_mask.dtype,
+                    device=language_mask.device,
+                ),
+            ), dim=1)
+            # print(input_ids[0].shape, attention_mask[0].shape)
+            # print(" ".join(
+            #     f"<{self.tokenizer.decode(id)}> ({mask})"
+            #     for id, mask in zip(input_ids[0].tolist(), attention_mask[0].tolist())
+            # )); exit(0)
             cache_position = torch.arange(
-                cache_position[-1].item(), cache_position[-1].item() + language_ids.shape[1],
+                cache_position[-1].item(), attention_mask.shape[1],
                 dtype=cache_position.dtype,
                 device=cache_position.device,
             )
@@ -312,12 +323,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             )
 
             if self.debug:
-                # FIXME: we are off by 1, but 2 thoughts are generated
-                # print(input_ids.shape, attention_mask.shape)
-                # print(" ".join(
-                #     f"<{self.tokenizer.decode(id)}> ({mask})"
-                #     for id, mask in zip(input_ids[0].tolist(), attention_mask[0].tolist())
-                # ))
                 self._print_thought_and_final_tokens(outputs.logits, all_thought_outputs)
         else:
             # Standard forward pass
