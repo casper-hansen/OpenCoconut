@@ -37,7 +37,9 @@ def main():
 
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.bos_token = "<|im_start|>"
+    tokenizer.eos_token = "<|im_end|>"
+    tokenizer.pad_token = "<|endoftext|>"
 
     # config and model
     config = CoconutConfig.from_tokenizer(
@@ -55,7 +57,7 @@ def main():
     # Set up training arguments
     training_args = TrainingArguments(
         output_dir=output_dir,
-        per_device_train_batch_size=16,
+        per_device_train_batch_size=1,
         gradient_accumulation_steps=1,
         learning_rate=1e-4,
         warmup_ratio=0.1,
