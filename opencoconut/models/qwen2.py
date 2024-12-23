@@ -328,7 +328,7 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             # Standard forward pass
             outputs = super().forward(
                 input_ids=input_ids,
-                attention_mask=language_mask,
+                attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_values=past_key_values,
                 inputs_embeds=None,
