@@ -285,14 +285,23 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             inputs_embeds = self.get_input_embeddings()(language_ids)
             # FIXME: when reasoning in latent space, we always have +1 to mask
             # because of the last hidden states, but no corresponding input_ids being available.
-            # SO we need to insert a zero at the correct index to mask it
+            # SO we need to insert a 0/-100 at the correct index to mask AND label it
             # (currently, this is not correctly inserted since it's just at the end)
+            # TODO: get thought position (between <bot><eot>) and insert attention_mask with 0
             attention_mask = torch.cat((
                 attention_mask,
                 torch.zeros(
                     (language_mask.shape[0], 1),
                     dtype=language_mask.dtype,
                     device=language_mask.device,
+                ),
+            ), dim=1)
+            labels = torch.cat((
+                labels,
+                torch.Tensor(
+                    (labels.shape[0], -100),
+                    dtype=labels.dtype,
+                    device=labels.device,
                 ),
             ), dim=1)
             # print(input_ids[0].shape, attention_mask[0].shape)
