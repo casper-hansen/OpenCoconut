@@ -60,10 +60,12 @@ class CoTDataset(Dataset):
             answer=item["answer"],
         )
 
-        # Tokenize prompts without padding
+        # Calculate effective max_length
+        max_len = self.max_length - self.coconut_config.continuous_thoughts * self.current_stage
+
         tokenized = self.tokenizer.encode_plus(
             prompt_formatted,
-            max_length=self.max_length,
+            max_length=max_len,
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
