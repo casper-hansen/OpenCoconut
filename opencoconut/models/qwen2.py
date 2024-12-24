@@ -291,7 +291,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     cache_position=cache_position,
                 )
 
-                past_key_values = outputs.past_key_values
                 # The inputs for the next thought will be the current hidden state
                 inputs_embeds = outputs.hidden_states[-1][:, -1:, :]
                 thought_mask = torch.cat((
@@ -307,6 +306,7 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     dtype=cache_position.dtype,
                     device=cache_position.device,
                 )
+                past_key_values = outputs.past_key_values
 
                 if self.debug:
                     all_thought_outputs.append(
@@ -321,8 +321,11 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             
             attention_mask = torch.cat((
                 attention_mask[:, :insert_idx],
-                torch.zeros(
-                    (attention_mask.shape[0], 1),
+                # Insert 'num_thoughts - 1' ones in the attention mask.
+                # The first thought is handled implicitly through past_key_values,
+                # so we create attention slots for the remaining thoughts.
+                torch.ones(
+                    (attention_mask.shape[0], num_thoughts-1),
                     dtype=attention_mask.dtype,
                     device=attention_mask.device,
                 ),
@@ -330,14 +333,30 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             ), dim=1)
             labels = torch.cat((
                 labels[:, :insert_idx],
+                # Insert 'num_thoughts - 1' masked labels (-100).
+                # Corresponding to the attention mask slots, these positions are masked
+                # from the loss calculation as they represent the latent thoughts,
+                # with the first thought being implicitly handled.
                 torch.full(
-                    (labels.shape[0], 1), -100, dtype=labels.dtype, device=labels.device
+                    (labels.shape[0], num_thoughts-1), -100, dtype=labels.dtype, device=labels.device
                 ),
                 labels[:, insert_idx:],
             ), dim=1)
             cache_position = torch.arange(
-                cache_position[-1].item(),
-                attention_mask.shape[1],
+                # Calculate the starting position for the 'language_ids' within the cache.
+                # 1. `cache_position[-1].item()`: Get the position of the last token of the *original* input
+                #    (i.e., the prompt before thought generation).
+                # 2. `+ 1`:  The language part starts *immediately after* the last generated thought. Each thought,
+                #    although not a physical token, conceptually occupies a single position in the sequence
+                #    history. Therefore, we add 1 to move past the position occupied by the last thought.
+                #    The first thought doesn't need an explicit slot in `attention_mask` and `labels` as it's
+                #    implicitly included in the `past_key_values`.
+                cache_position[-1].item() + 1,
+                # Calculate the end position for the 'language_ids' within the cache.
+                # 1. `cache_position[-1].item() + 1`: This is the starting position, as explained above.
+                # 2. `+ language_ids.shape[1]`: Add the length of the `language_ids` to the starting position to get
+                #    the position of the last token in the language part.
+                cache_position[-1].item() + 1 + language_ids.shape[1],
                 dtype=cache_position.dtype,
                 device=cache_position.device,
             )
