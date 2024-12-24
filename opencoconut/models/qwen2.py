@@ -315,8 +315,7 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
 
             inputs_embeds = self.get_input_embeddings()(language_ids)
 
-            # the thoughts are hidden in latent space and always takes up +1 in the sequence length dimension
-            # we fix the mask and labels by inserting between <bot><eot>
+            # we fix the mask and labels lengths by inserting between <bot><eot>
             insert_idx = (input_ids == self.coconut_config.eot_id).nonzero(as_tuple=True)[1][0]
             
             attention_mask = torch.cat((
