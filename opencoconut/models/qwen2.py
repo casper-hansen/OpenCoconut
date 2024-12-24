@@ -146,25 +146,26 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     cache_position=cache_position,
                 )
 
-                past_key_values = outputs.past_key_values
-                current_hidden = outputs.hidden_states[-1][:, -1:, :]
                 # The inputs for the next thought will be the current hidden state
-                inputs_embeds = current_hidden
-                attention_mask = torch.ones(
-                    (current_hidden.shape[0], 1),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
-                )
-                # Update cache_position for the next thought
+                inputs_embeds = outputs.hidden_states[-1][:, -1:, :]
+                attention_mask = torch.cat((
+                    attention_mask,
+                    torch.ones(
+                        (inputs_embeds.shape[0], 1),
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    ),
+                ), dim=1)
                 cache_position = torch.tensor(
                     [cache_position[-1] + 1],
                     dtype=cache_position.dtype,
                     device=cache_position.device,
                 )
+                past_key_values = outputs.past_key_values
 
                 if self.debug:
                     all_thought_outputs.append(
-                        self.hidden_states_to_token(current_hidden, lm_head=True)
+                        self.hidden_states_to_token(inputs_embeds, lm_head=True)
                     )
 
             inputs_embeds = self.get_input_embeddings()(
