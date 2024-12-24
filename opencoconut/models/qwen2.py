@@ -173,14 +173,24 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     [[self.coconut_config.eot_id]], device=inputs_embeds.device
                 )
             )
-            cache_position = torch.arange(
-                cache_position[-1].item(),
-                cache_position[-1].item() + 1,
+            # we fix the mask and labels lengths by inserting between <bot><eot>
+            insert_idx = (input_ids == self.coconut_config.bot_id).nonzero(as_tuple=True)[1][0]
+
+            attention_mask = torch.cat((
+                attention_mask[:, :insert_idx + 1],
+                torch.ones(
+                    (attention_mask.shape[0], num_thoughts-1),
+                    dtype=attention_mask.dtype,
+                    device=attention_mask.device,
+                ),
+                attention_mask[:, insert_idx + 1:],
+            ), dim=1)
+            # The cache position for the next token should be the position after the last token in the current sequence,
+            # considering the inserted latent thought representations.
+            cache_position = torch.tensor(
+                [attention_mask.shape[1] - 1],
                 dtype=cache_position.dtype,
                 device=cache_position.device,
-            )
-            attention_mask = torch.ones(
-                (input_ids.shape[0], cache_position[-1].item()), device=input_ids.device
             )
 
             # Forward pass with combined embeddings
