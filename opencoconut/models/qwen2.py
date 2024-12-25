@@ -345,6 +345,9 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             attention_mask = torch.stack(new_attention_mask, dim=0)
             labels = torch.stack(new_labels, dim=0)
 
+            # FIXME: cannot reuse past_key_values from generating thoughts
+            past_key_values = DynamicCache()
+
             # Forward pass with combined embeddings
             outputs = super().forward(
                 input_ids=None,
