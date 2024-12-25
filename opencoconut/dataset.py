@@ -60,12 +60,9 @@ class CoTDataset(Dataset):
             answer=item["answer"],
         )
 
-        # Calculate effective max_length
-        max_len = self.max_length - self.coconut_config.continuous_thoughts * self.current_stage
-
         tokenized = self.tokenizer.encode_plus(
             prompt_formatted,
-            max_length=max_len,
+            max_length=self.max_length,
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
