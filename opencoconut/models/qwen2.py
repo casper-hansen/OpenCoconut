@@ -387,8 +387,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
     def hidden_states_to_token(self, logits: torch.Tensor, lm_head=False):
         if lm_head:
             logits = self.lm_head(logits)
-        if logits.dim() == 3:
-            logits.squeeze(0)
         probs = torch.nn.functional.softmax(logits[:, -1, :], dim=-1)
         top_probs, top_indices = torch.topk(probs, 3)
 

@@ -18,8 +18,9 @@ class CoTDataset(Dataset):
         max_length=512,
         include_reasoning_steps=True,
         prompt_format=CHATML_LIKE_FORMAT,
+        split="train",
     ):
-        self.dataset = load_dataset(dataset_name, split="train")
+        self.dataset = load_dataset(dataset_name, split=split)
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.prompt_format = prompt_format
