@@ -62,6 +62,43 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             f"t_final: [{final_token['token'].strip()}] (p: {final_token['prob']:.3f})"
         )
 
+    def thoughts_forward(
+        self,
+        num_thoughts,
+        inputs_embeds,
+        attention_mask,
+        past_key_values,
+    ):
+        all_thought_outputs = []
+
+        for t in range(num_thoughts):
+            outputs = self.model.forward(
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                use_cache=True,
+                return_dict=True,
+            )
+
+            # The inputs for the next thought will be the current hidden state
+            inputs_embeds = outputs.last_hidden_state[:, -1:, :]
+            attention_mask = torch.cat((
+                attention_mask,
+                torch.ones(
+                    (inputs_embeds.shape[0], 1),
+                    dtype=attention_mask.dtype,
+                    device=attention_mask.device,
+                ),
+            ), dim=1)
+            past_key_values = outputs.past_key_values
+
+            if self.debug:
+                all_thought_outputs.append(
+                    self.hidden_states_to_token(inputs_embeds, lm_head=True)
+                )
+
+        return all_thought_outputs
+
     def infer_forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -113,8 +150,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                 dim=1,
             )
 
-        all_thought_outputs = []
-
         if past_key_values is None:
             past_key_values = DynamicCache()
 
@@ -125,35 +160,7 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             )
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
-            for t in range(num_thoughts):
-                outputs = self.model.forward(
-                    input_ids=None,
-                    attention_mask=attention_mask,
-                    position_ids=None,  # Not directly needed in the thought loop
-                    past_key_values=past_key_values,
-                    inputs_embeds=inputs_embeds,
-                    use_cache=True,
-                    output_attentions=output_attentions,
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
-
-                # The inputs for the next thought will be the current hidden state
-                inputs_embeds = outputs.hidden_states[-1][:, -1:, :]
-                attention_mask = torch.cat((
-                    attention_mask,
-                    torch.ones(
-                        (inputs_embeds.shape[0], 1),
-                        dtype=attention_mask.dtype,
-                        device=attention_mask.device,
-                    ),
-                ), dim=1)
-                past_key_values = outputs.past_key_values
-
-                if self.debug:
-                    all_thought_outputs.append(
-                        self.hidden_states_to_token(inputs_embeds, lm_head=True)
-                    )
+            all_thought_outputs = self.thoughts_forward(num_thoughts, inputs_embeds, attention_mask, past_key_values)
 
             inputs_embeds = self.get_input_embeddings()(
                 torch.tensor(
@@ -248,8 +255,8 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             thought_ids,
             language_ids,
             thought_mask,
-            language_mask,
-            thought_labels,
+            _,
+            _,
             language_labels,
         ) = split_sequences(input_ids, attention_mask, labels, self.coconut_config)
 
@@ -262,36 +269,7 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             num_thoughts = self.current_stage * self.coconut_config.continuous_thoughts
             inputs_embeds = self.get_input_embeddings()(thought_ids)
 
-            for t in range(num_thoughts):
-                outputs = self.model.forward(
-                    input_ids=None,
-                    attention_mask=thought_mask,
-                    position_ids=None,  # Not directly needed in the thought loop
-                    past_key_values=past_key_values,
-                    inputs_embeds=inputs_embeds,
-                    use_cache=True,
-                    output_attentions=output_attentions,
-                    output_hidden_states=True,
-                    return_dict=True,
-                    cache_position=cache_position,
-                )
-
-                # The inputs for the next thought will be the current hidden state
-                inputs_embeds = outputs.hidden_states[-1][:, -1:, :]
-                thought_mask = torch.cat((
-                    thought_mask,
-                    torch.ones(
-                        (inputs_embeds.shape[0], 1),
-                        dtype=thought_mask.dtype,
-                        device=thought_mask.device,
-                    ),
-                ), dim=1)
-                past_key_values = outputs.past_key_values
-
-                if self.debug:
-                    all_thought_outputs.append(
-                        self.hidden_states_to_token(inputs_embeds, lm_head=True)
-                    )
+            all_thought_outputs = self.thoughts_forward(num_thoughts, inputs_embeds, thought_mask, past_key_values)
 
             inputs_embeds = self.get_input_embeddings()(language_ids)
 
