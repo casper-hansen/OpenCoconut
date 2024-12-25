@@ -23,45 +23,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
         self.current_stage = 0
         self.debug = os.environ.get("DEBUG") == "1"
 
-    @torch.no_grad()
-    def hidden_states_to_token(self, logits: torch.Tensor, lm_head=False):
-        if lm_head:
-            logits = self.lm_head(logits)
-        if logits.dim() == 3:
-            logits.squeeze(0)
-        probs = torch.nn.functional.softmax(logits[:, -1, :], dim=-1)
-        top_probs, top_indices = torch.topk(probs, 3)
-
-        tokens = []
-
-        for prob, token_id in zip(top_probs.squeeze(), top_indices.squeeze()):
-            tokens.append(
-                {
-                    "token": self.tokenizer.decode(token_id.item()),
-                    "prob": prob.item(),
-                    "token_id": token_id.item(),
-                }
-            )
-
-        return tokens
-
-    def _print_thought_and_final_tokens(
-        self, logits: torch.Tensor, all_thought_outputs: List[torch.Tensor]
-    ):
-        final_thoughts = []
-        final_token = self.hidden_states_to_token(logits)[0]
-        for i, sampled_tokens in enumerate(all_thought_outputs):
-            tokens_formatted = []
-            for j, token in enumerate(sampled_tokens):
-                tokens_formatted.append(
-                    f"t_{i},{j}: [{token['token'].strip()}] (p: {token['prob']:.3f})"
-                )
-            final_thoughts.append((" || ").join(tokens_formatted))
-        print("\n".join(final_thoughts))
-        print(
-            f"t_final: [{final_token['token'].strip()}] (p: {final_token['prob']:.3f})"
-        )
-
     def thoughts_forward(
         self,
         num_thoughts,
@@ -391,3 +352,42 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
         )
 
         return outputs
+
+    @torch.no_grad()
+    def hidden_states_to_token(self, logits: torch.Tensor, lm_head=False):
+        if lm_head:
+            logits = self.lm_head(logits)
+        if logits.dim() == 3:
+            logits.squeeze(0)
+        probs = torch.nn.functional.softmax(logits[:, -1, :], dim=-1)
+        top_probs, top_indices = torch.topk(probs, 3)
+
+        tokens = []
+
+        for prob, token_id in zip(top_probs.squeeze(), top_indices.squeeze()):
+            tokens.append(
+                {
+                    "token": self.tokenizer.decode(token_id.item()),
+                    "prob": prob.item(),
+                    "token_id": token_id.item(),
+                }
+            )
+
+        return tokens
+
+    def _print_thought_and_final_tokens(
+        self, logits: torch.Tensor, all_thought_outputs: List[torch.Tensor]
+    ):
+        final_thoughts = []
+        final_token = self.hidden_states_to_token(logits)[0]
+        for i, sampled_tokens in enumerate(all_thought_outputs):
+            tokens_formatted = []
+            for j, token in enumerate(sampled_tokens):
+                tokens_formatted.append(
+                    f"t_{i},{j}: [{token['token'].strip()}] (p: {token['prob']:.3f})"
+                )
+            final_thoughts.append((" || ").join(tokens_formatted))
+        print("\n".join(final_thoughts))
+        print(
+            f"t_final: [{final_token['token'].strip()}] (p: {final_token['prob']:.3f})"
+        )
