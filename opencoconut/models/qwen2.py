@@ -91,13 +91,14 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
+        batch_size = input_ids.shape[0]
 
         if input_ids.shape[1] > 1:
             input_ids = torch.concat(
                 [
                     input_ids,
                     torch.tensor(
-                        [[self.coconut_config.bot_id]], device=input_ids.device
+                        [[self.coconut_config.bot_id]] * batch_size, device=input_ids.device
                     ),
                 ],
                 dim=1,
@@ -110,9 +111,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     ),
                 ],
                 dim=1,
-            )
-            cache_position = torch.cat(
-                [cache_position, cache_position[-1:] + 1], dim=-1
             )
 
         all_thought_outputs = []
@@ -127,11 +125,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             )
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
-            # Initialize past_key_values and cache_position for the first thought
-            cache_position = torch.arange(
-                0, input_ids.shape[1], dtype=torch.long, device=input_ids.device
-            )
-
             for t in range(num_thoughts):
                 outputs = self.model.forward(
                     input_ids=None,
@@ -143,7 +136,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                     output_attentions=output_attentions,
                     output_hidden_states=True,
                     return_dict=True,
-                    cache_position=cache_position,
                 )
 
                 # The inputs for the next thought will be the current hidden state
@@ -156,11 +148,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                         device=attention_mask.device,
                     ),
                 ), dim=1)
-                cache_position = torch.tensor(
-                    [cache_position[-1] + 1],
-                    dtype=cache_position.dtype,
-                    device=cache_position.device,
-                )
                 past_key_values = outputs.past_key_values
 
                 if self.debug:
@@ -170,28 +157,21 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
 
             inputs_embeds = self.get_input_embeddings()(
                 torch.tensor(
-                    [[self.coconut_config.eot_id]], device=inputs_embeds.device
+                    [[self.coconut_config.eot_id]] * batch_size, device=inputs_embeds.device
                 )
             )
-            # we fix the mask and labels lengths by inserting between <bot><eot>
-            insert_idx = (input_ids == self.coconut_config.bot_id).nonzero(as_tuple=True)[1][0]
 
-            attention_mask = torch.cat((
-                attention_mask[:, :insert_idx + 1],
-                torch.ones(
-                    (attention_mask.shape[0], num_thoughts-1),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
-                ),
-                attention_mask[:, insert_idx + 1:],
-            ), dim=1)
-            # The cache position for the next token should be the position after the last token in the current sequence,
-            # considering the inserted latent thought representations.
-            cache_position = torch.tensor(
-                [attention_mask.shape[1] - 1],
-                dtype=cache_position.dtype,
-                device=cache_position.device,
-            )
+            new_attention_mask = []
+            for b in range(batch_size):
+                new_attention_mask.append(torch.cat((
+                    attention_mask[b],
+                    torch.ones(
+                        num_thoughts-1,
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    ),
+                )))
+            attention_mask = torch.stack(new_attention_mask, dim=0)
 
             # Forward pass with combined embeddings
             outputs = super().forward(
@@ -205,7 +185,6 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                 output_attentions=output_attentions,
                 output_hidden_states=True,
                 return_dict=True,
-                cache_position=cache_position,
                 num_logits_to_keep=num_logits_to_keep,
             )
 
