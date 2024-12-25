@@ -43,14 +43,17 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
 
             # The inputs for the next thought will be the current hidden state
             inputs_embeds = outputs.last_hidden_state[:, -1:, :]
-            attention_mask = torch.cat((
-                attention_mask,
-                torch.ones(
-                    (inputs_embeds.shape[0], 1),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
+            attention_mask = torch.cat(
+                (
+                    attention_mask,
+                    torch.ones(
+                        (inputs_embeds.shape[0], 1),
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    ),
                 ),
-            ), dim=1)
+                dim=1,
+            )
             past_key_values = outputs.past_key_values
 
             if self.debug:
@@ -96,7 +99,8 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
                 [
                     input_ids,
                     torch.tensor(
-                        [[self.coconut_config.bot_id]] * batch_size, device=input_ids.device
+                        [[self.coconut_config.bot_id]] * batch_size,
+                        device=input_ids.device,
                     ),
                 ],
                 dim=1,
@@ -121,24 +125,31 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             )
             inputs_embeds = self.get_input_embeddings()(input_ids)
 
-            all_thought_outputs = self.thoughts_forward(num_thoughts, inputs_embeds, attention_mask, past_key_values)
+            all_thought_outputs = self.thoughts_forward(
+                num_thoughts, inputs_embeds, attention_mask, past_key_values
+            )
 
             inputs_embeds = self.get_input_embeddings()(
                 torch.tensor(
-                    [[self.coconut_config.eot_id]] * batch_size, device=inputs_embeds.device
+                    [[self.coconut_config.eot_id]] * batch_size,
+                    device=inputs_embeds.device,
                 )
             )
 
             new_attention_mask = []
             for b in range(batch_size):
-                new_attention_mask.append(torch.cat((
-                    attention_mask[b],
-                    torch.ones(
-                        num_thoughts-1,
-                        dtype=attention_mask.dtype,
-                        device=attention_mask.device,
-                    ),
-                )))
+                new_attention_mask.append(
+                    torch.cat(
+                        (
+                            attention_mask[b],
+                            torch.ones(
+                                num_thoughts - 1,
+                                dtype=attention_mask.dtype,
+                                device=attention_mask.device,
+                            ),
+                        )
+                    )
+                )
             attention_mask = torch.stack(new_attention_mask, dim=0)
 
             # Forward pass with combined embeddings
@@ -230,34 +241,49 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             num_thoughts = self.current_stage * self.coconut_config.continuous_thoughts
             inputs_embeds = self.get_input_embeddings()(thought_ids)
 
-            all_thought_outputs = self.thoughts_forward(num_thoughts, inputs_embeds, thought_mask, past_key_values)
+            all_thought_outputs = self.thoughts_forward(
+                num_thoughts, inputs_embeds, thought_mask, past_key_values
+            )
 
             inputs_embeds = self.get_input_embeddings()(language_ids)
 
             # we fix the mask and labels lengths by inserting between <bot><eot>
-            insert_indices = (input_ids == self.coconut_config.eot_id).nonzero(as_tuple=True)[1]
+            insert_indices = (input_ids == self.coconut_config.eot_id).nonzero(
+                as_tuple=True
+            )[1]
 
             new_attention_mask = []
             new_labels = []
             for b in range(input_ids.shape[0]):
                 insert_idx = insert_indices[b]
-                new_attention_mask.append(torch.cat((
-                    attention_mask[b, :insert_idx],
-                    torch.ones(
-                        num_thoughts-1,
-                        dtype=attention_mask.dtype,
-                        device=attention_mask.device,
-                    ),
-                    attention_mask[b, insert_idx:],
-                )))
+                new_attention_mask.append(
+                    torch.cat(
+                        (
+                            attention_mask[b, :insert_idx],
+                            torch.ones(
+                                num_thoughts - 1,
+                                dtype=attention_mask.dtype,
+                                device=attention_mask.device,
+                            ),
+                            attention_mask[b, insert_idx:],
+                        )
+                    )
+                )
 
-                new_labels.append(torch.cat((
-                    labels[b, :insert_idx],
-                    torch.full(
-                        (num_thoughts-1,), -100, dtype=labels.dtype, device=labels.device
-                    ),
-                    labels[b, insert_idx:],
-                )))
+                new_labels.append(
+                    torch.cat(
+                        (
+                            labels[b, :insert_idx],
+                            torch.full(
+                                (num_thoughts - 1,),
+                                -100,
+                                dtype=labels.dtype,
+                                device=labels.device,
+                            ),
+                            labels[b, insert_idx:],
+                        )
+                    )
+                )
 
             # Stack the attention masks and labels along the batch dimension
             attention_mask = torch.stack(new_attention_mask, dim=0)
@@ -285,7 +311,11 @@ class CoconutQwen2ForCausalLM(Qwen2ForCausalLM):
             if self.debug:
                 tokens = []
                 for i, (id, mask, label) in enumerate(
-                    zip(input_ids[0].tolist(), attention_mask[0].tolist(), labels[0].tolist())
+                    zip(
+                        input_ids[0].tolist(),
+                        attention_mask[0].tolist(),
+                        labels[0].tolist(),
+                    )
                 ):
                     tokens.append(f"<{self.tokenizer.decode(id)}> ({mask}, {label})")
                     if i == insert_idx:
